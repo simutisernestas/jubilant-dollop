@@ -1,0 +1,26 @@
+DECENTRALIZED COLLABORATIVE LOCALIZATION USING ULTRA-WIDEBAND RANGING
+https://jhartzer.github.io/assets/pdf/Hartzer_thesis.pdf
+
+Cooperative Localization in Wireless Networks
+https://ieeexplore.ieee.org/document/4802193
+
+Recursive decentralized localization for multi-robot systems with asynchronous pairwise communication
+https://journals.sagepub.com/doi/10.1177/0278364918760698
+
+This last one has algorithm in pseudo code, could start right there to simulate
+Also matlab implementation of it:
+https://github.com/unmannedlab/collab_localization/blob/main/matlab/algorithms/DCL.m
+
+The goal of the special course is to investigate and develop a method for RF-based distributed localization in multi-robot systems. 
+
+1. Investigate state-of-the-art methods for RF-based distributed localization in multi-robot systems.
+2. Develop a process model and a sensor model for robots equipped with RF-based range sensor(s) as well as standard sensors (IMU, altimeter, compass, etc.). 
+3. Develop a distributed localization method using the above-mentioned process and sensor model. Gather simulated data and apply the developed method. 
+4. Gather experimental data and apply the developed method on it offline.
+5. Analyze the developed method's performance to alternative localization methods, e.g., GPS or optical tracking. 
+6. Optionally implement the method on hardware and test it online in a real-life scenario.
+
+Deliverable: Technical report in the form of a double column 6-page IEEE paper, documented code repository, and experimental data.
+
+IMU preintegration - dead reckoning
+Principles of GNSS, inertial, and multisensor integrated navigation systems
