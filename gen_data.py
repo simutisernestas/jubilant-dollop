@@ -29,7 +29,7 @@ def test_path_gen():
     test only path generation in Sim.
     '''
     #### choose a built-in IMU model, typical for IMU381
-    imu_err = 'low-accuracy'
+    imu_err = 'high-accuracy'
     # generate GPS and magnetometer data
     imu = imu_model.IMU(accuracy=imu_err, axis=9, gps=True)
     # mag_error = {'si': np.eye(3) + np.random.randn(3, 3)*0.1,
