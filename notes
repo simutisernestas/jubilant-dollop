@@ -25,5 +25,7 @@ Deliverable: Technical report in the form of a double column 6-page IEEE paper, 
 IMU preintegration - dead reckoning
 Principles of GNSS, inertial, and multisensor integrated navigation systems
 
-
 Create runs - can be done with different trajectories using sim toool.
+
+TODO: 
+ - retrieve the code from github and run the EKF on this data for creating baseline
