@@ -5,6 +5,10 @@ from filterpy.kalman import ExtendedKalmanFilter
 import transforms3d as tf
 import matplotlib.pyplot as plt
 
+DEBUG = False
+BEACONS_NUM = 5
+AGENTS_NUM = 2
+
 
 class Beacon:
 
@@ -15,11 +19,11 @@ class Beacon:
             raise Exception("Wrong state shape!")
         self.__x = x0
 
-    def get_pos(self, i=None) -> np.array:
+    def get_pos(self) -> np.array:
         return self.__x
 
 
-def getH(x_op: np.ndarray, beacons, step_index):
+def getH(x_op: np.ndarray, beacons):
     """    
     pr - robot position
     pbi = beacon_i position
@@ -37,7 +41,7 @@ def getH(x_op: np.ndarray, beacons, step_index):
     """
     H = np.zeros((len(beacons), len(x_op)))
     for i, b in enumerate(beacons):
-        diff = x_op[:3] - b.get_pos(step_index)
+        diff = x_op[:3] - b.get_pos()
         the_norm = np.linalg.norm(diff)
         if (diff == 0.0).all():
             raise Exception("Division by zero")
@@ -45,18 +49,18 @@ def getH(x_op: np.ndarray, beacons, step_index):
     return H
 
 
-def hx(x, beacons, step_index):
+def hx(x, beacons):
     """
     non-linear measurement func
     """
     h = np.zeros((len(beacons), 1))
     for i, b in enumerate(beacons):
-        h[i] = np.linalg.norm(x[:3] - b.get_pos(step_index))
+        h[i] = np.linalg.norm(x[:3] - b.get_pos())
     return h
 
 
 class Agent:
-    DIM_Z = 4
+    DIM_Z = BEACONS_NUM + AGENTS_NUM - 1
     DIM_X = 9
     DIM_U = 6
 
@@ -81,31 +85,22 @@ class Agent:
         self.filter.F = F
         self.filter.B = B
         self.filter.P = np.eye(9)*1e3
-        self.filter.R = np.eye(self.DIM_Z)*1e+2
+        self.filter.R = np.eye(self.DIM_Z)
         self.filter.Q = np.eye(9)*1e-3
-        self.index = 0  # current iteration of data
         self.g = np.array([0, 0, 9.794841972265039942e+00])
         self.trajectory = []
 
-    def get_pos(self, i=None):
-        if i is not None:
+    def get_pos(self, groud_truth=True):
+        if groud_truth:
             return self.__data["ref_pos"][i].reshape(3, 1)
         return self.filter.x[:3].copy()
 
     def num_data(self):
         return len(self.__data["ref_pos"])
 
-    def get_beacon_dists(self, beacons, step_index) -> np.array:
-        ''' Simulate distance measurement
-            TODO: it might be that noise i added already : ) '''
-        current_ref_pos = self.__data["ref_pos"][step_index].reshape(3, 1)
-        return np.array([np.linalg.norm(current_ref_pos - b.get_pos())
-                         for b in beacons])
-
     def kalman_update(self, beacons, agents, step_index):
         # save position
         self.trajectory.append(self.filter.x[:3].copy())
-        # self.trajectory.append(self.__data["ref_pos"][step_index].copy())
 
         # predict
         acc = self.__data["accel-0"][step_index]
@@ -122,17 +117,31 @@ class Agent:
         domega = domega * np.pi / 180
         u = np.concatenate((acc, Rw @ domega)).reshape(6, 1)
         self.filter.predict(u=u)
-        print(f"filter predict: {self.filter.x}")
+        if DEBUG:
+            print(f"filter predict: {self.filter.x}")
 
         # update
-        dists_beacons = self.get_beacon_dists(beacons, step_index)
-        gt_dists_beacons = [
-            self.__data[f"uwb-static{i}"][step_index][0] for i in range(BEACONS_NUM)]
-        print(f"Beacons dists: {dists_beacons}")
-        print(f"True dists: {gt_dists_beacons}")
-        z = np.array(gt_dists_beacons).reshape(-1, 1)
-        self.filter.update(z, getH, hx, args=(
-            beacons, step_index), hx_args=(beacons, step_index))
+        NOISE_STD = 1
+        gt_dists = [
+            self.__data[f"uwb-static{i}"][step_index][0] +
+            np.random.normal(scale=NOISE_STD) for i in range(BEACONS_NUM)]
+        
+        for j in range(AGENTS_NUM+1):
+            # check if self.__data has uwb-static key
+            if f"uwb-agent{j+1}" not in self.__data.keys():
+                continue
+            gt_dists.append(
+                self.__data[f"uwb-agent{j+1}"][step_index] +
+                np.random.normal(scale=NOISE_STD))
+            print("ADD", j+1)
+        
+        if DEBUG:
+            print(f"True dists: {gt_dists}")
+        z = np.array(gt_dists).reshape(-1, 1)
+        beacons.extend(agents)
+        # TODO: in second iteration H has 7 rows!!!
+        self.filter.update(z, getH, hx, args=(beacons), hx_args=(beacons))
+        print("update")
 
 
 def take_in_data(agent_dir):
@@ -151,16 +160,23 @@ agent1_data = take_in_data("data/agent1")
 agent2_data = take_in_data("data/agent2")
 
 STARTING_POS = agent1_data["ref_pos"][0]
-BEACONS_NUM = 4
 
 agent1_data["ref_pos"] = agent1_data["ref_pos"] - STARTING_POS
 agent2_data["ref_pos"] = agent2_data["ref_pos"] - STARTING_POS
 
 static_beacons = []
 for i in range(BEACONS_NUM):
-    x0 = agent1_data[f"uwb-static{i}"][0][1:]
+    x0 = agent1_data[f"uwb-static{i}"][0][1:] - STARTING_POS
     static_beacons.append(Beacon(str(i), x0))
     print(f"beacon{i}: {x0}")
+
+Agent1 = Agent(agent1_data)
+Agent2 = Agent(agent2_data)
+global_agents = [Agent1, Agent2]
+for i in range(Agent1.num_data()-1):
+    for ag in global_agents:
+        agents_without_itself = [a for a in global_agents if a is not ag]
+        ag.kalman_update(static_beacons, agents_without_itself, i)
 
 # plot agents and static_beacons in map
 fig = plt.figure()
@@ -170,41 +186,12 @@ for beacon in static_beacons:
     ax.scatter(position[0], position[1], position[2])
 ax.plot(agent1_data["ref_pos"][:, 0], agent1_data["ref_pos"]
         [:, 1], agent1_data["ref_pos"][:, 2])
-# ax.plot(agent2_data["ref_pos"][:, 0], agent2_data["ref_pos"][:, 1], agent2_data["ref_pos"][:, 2])
-
-Agent1 = Agent(agent1_data)
-for i in range(Agent1.num_data()-1):
-    Agent1.kalman_update(static_beacons, [], i)
-traj = np.array(Agent1.trajectory)
-traj = traj.reshape(-1, 3)
-ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], '--')
-
+ax.plot(agent2_data["ref_pos"][:, 0], agent2_data["ref_pos"]
+        [:, 1], agent2_data["ref_pos"][:, 2])
+for agent in global_agents:
+    traj = np.array(agent.trajectory)
+    traj = traj.reshape(-1, 3)
+    ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], '--')
 plt.legend(["beacon1", "beacon2", "beacon3",
-           "beacon4", "agent1", "agent1_kalman"])
+           "beacon4", "beacon5", "agent1", "agent2", "EKF_agent1", "EKF_agent2"])
 plt.show()
-
-# # each agent would have kalman filter then
-# global_agents = [Agent(agent1_data),
-#                  Agent(agent2_data),]
-
-# step_i = 0
-# for i in range(100):
-#     for agent in global_agents:
-#         # agent without itself
-#         agents_without_itself = [a for a in global_agents if a is not agent]
-#         agent.kalman_update(static_beacons, agents_without_itself, step_i)
-#         break
-#     step_i += 1
-
-# # plot agents and static_beacons in map
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
-# for beacon in static_beacons:
-#     position = beacon.get_pos()
-#     ax.scatter(position[0], position[1], position[2])
-# for agent in global_agents:
-#     traj = np.array(agent.trajectory)
-#     traj = traj.reshape(-1, 3)
-#     ax.scatter(traj[:, 0], traj[:, 1], traj[:, 2])
-# plt.legend(["beacon1", "beacon2", "beacon3", "beacon4", "agent1", "agent2"])
-# plt.show()

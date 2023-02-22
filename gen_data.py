@@ -76,16 +76,14 @@ def uwb_gen():
         data = np.genfromtxt(refs, delimiter=',')[1:]
         ref_pos[agent_dir] = data
 
-    ref_pos["agent1"] = ref_pos["agent1"] - ref_pos["agent1"][0, :]
-    ref_pos["agent2"] = ref_pos["agent2"] - ref_pos["agent2"][0, :]
-
     # generate uwb static beacons
     STATIC_STD_FROM_START = 100
     dict_items = ref_pos.items()
     a1, ref1 = next(iter(dict_items))
+    STARTING_POS = ref1[0]
     for i in range(5):
         ref_pos[f'static{i}'] = np.full(
-            ref1.shape, np.random.normal(scale=STATIC_STD_FROM_START, size=3))
+            ref1.shape, STARTING_POS + np.random.normal(scale=STATIC_STD_FROM_START, size=3))
 
     for a1, ref1 in ref_pos.items():
         for a2, ref2 in ref_pos.items():
