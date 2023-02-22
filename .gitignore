@@ -3,3 +3,4 @@ gnss-ins-sim/
 *.pdf
 data/
 rfloc/
+.vscode
