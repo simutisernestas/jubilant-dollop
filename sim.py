@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 DEBUG = False
 BEACONS_NUM = 5
 AGENTS_NUM = 2
+GEN_DATA = False
+
+if GEN_DATA:
+    import subprocess
+    subprocess.call("./gen_data.py", shell=True)
 
 
 class Beacon:
@@ -60,7 +65,7 @@ def hx(x, beacons):
 
 
 class Agent:
-    DIM_Z = BEACONS_NUM + AGENTS_NUM - 1
+    DIM_Z = BEACONS_NUM  # + AGENTS_NUM - 1
     DIM_X = 9
     DIM_U = 6
 
@@ -125,23 +130,23 @@ class Agent:
         gt_dists = [
             self.__data[f"uwb-static{i}"][step_index][0] +
             np.random.normal(scale=NOISE_STD) for i in range(BEACONS_NUM)]
-        
-        for j in range(AGENTS_NUM+1):
-            # check if self.__data has uwb-static key
-            if f"uwb-agent{j+1}" not in self.__data.keys():
-                continue
-            gt_dists.append(
-                self.__data[f"uwb-agent{j+1}"][step_index] +
-                np.random.normal(scale=NOISE_STD))
-            print("ADD", j+1)
-        
+
+        # for j in range(AGENTS_NUM+1):
+        #     # check if self.__data has uwb-static key
+        #     if f"uwb-agent{j+1}" not in self.__data.keys():
+        #         continue
+        #     gt_dists.append(
+        #         self.__data[f"uwb-agent{j+1}"][step_index] +
+        #         np.random.normal(scale=NOISE_STD))
+        #     print("ADD", j+1)
+
         if DEBUG:
             print(f"True dists: {gt_dists}")
         z = np.array(gt_dists).reshape(-1, 1)
-        beacons.extend(agents)
-        # TODO: in second iteration H has 7 rows!!!
-        self.filter.update(z, getH, hx, args=(beacons), hx_args=(beacons))
-        print("update")
+        to_pass_beacons = beacons.copy()
+        # to_pass_beacons.extend(agents)
+        self.filter.update(z, getH, hx, args=(
+            to_pass_beacons), hx_args=(to_pass_beacons))
 
 
 def take_in_data(agent_dir):
@@ -174,9 +179,10 @@ Agent1 = Agent(agent1_data)
 Agent2 = Agent(agent2_data)
 global_agents = [Agent1, Agent2]
 for i in range(Agent1.num_data()-1):
-    for ag in global_agents:
-        agents_without_itself = [a for a in global_agents if a is not ag]
-        ag.kalman_update(static_beacons, agents_without_itself, i)
+    for current_agent in global_agents:
+        agents_without_itself = [
+            a for a in global_agents if a is not current_agent]
+        current_agent.kalman_update(static_beacons, agents_without_itself, i)
 
 # plot agents and static_beacons in map
 fig = plt.figure()
