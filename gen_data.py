@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 # globals
 D2R = math.pi/180
 PLOT_UWB = False
+NUM_UWB_BEACONS = 5
 
 motion_def_path = os.path.abspath('.//data//motion-profiles//')
 fs = 100.0          # IMU sample frequency
@@ -81,7 +82,7 @@ def uwb_gen():
     dict_items = ref_pos.items()
     a1, ref1 = next(iter(dict_items))
     STARTING_POS = ref1[0]
-    for i in range(5):
+    for i in range(NUM_UWB_BEACONS):
         ref_pos[f'static{i}'] = np.full(
             ref1.shape, STARTING_POS + np.random.normal(scale=STATIC_STD_FROM_START, size=3))
 

@@ -6,7 +6,7 @@ import transforms3d as tf
 import matplotlib.pyplot as plt
 
 DEBUG = False
-BEACONS_NUM = 5
+BEACONS_NUM = 2
 AGENTS_NUM = 2
 GEN_DATA = False
 
@@ -65,7 +65,7 @@ def hx(x, beacons):
 
 
 class Agent:
-    DIM_Z = BEACONS_NUM  # + AGENTS_NUM - 1
+    DIM_Z = BEACONS_NUM + (AGENTS_NUM - 1)
     DIM_X = 9
     DIM_U = 6
 
@@ -95,15 +95,16 @@ class Agent:
         self.g = np.array([0, 0, 9.794841972265039942e+00])
         self.trajectory = []
 
-    def get_pos(self, groud_truth=True):
-        if groud_truth:
-            return self.__data["ref_pos"][i].reshape(3, 1)
+    def get_ref_pos(self):
+        return self.__data["ref_pos"]
+
+    def get_pos(self):
         return self.filter.x[:3].copy()
 
     def num_data(self):
         return len(self.__data["ref_pos"])
 
-    def kalman_update(self, beacons, agents, step_index):
+    def kalman_update(self, beacons, agents, step_index, range_meas=False):
         # save position
         self.trajectory.append(self.filter.x[:3].copy())
 
@@ -125,26 +126,28 @@ class Agent:
         if DEBUG:
             print(f"filter predict: {self.filter.x}")
 
+        if not range_meas:
+            return
+
         # update
         NOISE_STD = 1
         gt_dists = [
             self.__data[f"uwb-static{i}"][step_index][0] +
             np.random.normal(scale=NOISE_STD) for i in range(BEACONS_NUM)]
 
-        # for j in range(AGENTS_NUM+1):
-        #     # check if self.__data has uwb-static key
-        #     if f"uwb-agent{j+1}" not in self.__data.keys():
-        #         continue
-        #     gt_dists.append(
-        #         self.__data[f"uwb-agent{j+1}"][step_index] +
-        #         np.random.normal(scale=NOISE_STD))
-        #     print("ADD", j+1)
+        for j in range(AGENTS_NUM+1):
+            # check if self.__data has uwb-static key
+            if f"uwb-agent{j+1}" not in self.__data.keys():
+                continue
+            gt_dists.append(
+                self.__data[f"uwb-agent{j+1}"][step_index] +
+                np.random.normal(scale=NOISE_STD))
 
         if DEBUG:
             print(f"True dists: {gt_dists}")
         z = np.array(gt_dists).reshape(-1, 1)
         to_pass_beacons = beacons.copy()
-        # to_pass_beacons.extend(agents)
+        to_pass_beacons.extend(agents)
         self.filter.update(z, getH, hx, args=(
             to_pass_beacons), hx_args=(to_pass_beacons))
 
@@ -179,10 +182,12 @@ Agent1 = Agent(agent1_data)
 Agent2 = Agent(agent2_data)
 global_agents = [Agent1, Agent2]
 for i in range(Agent1.num_data()-1):
+    range_meas = (i % 10 == 0)
     for current_agent in global_agents:
         agents_without_itself = [
             a for a in global_agents if a is not current_agent]
-        current_agent.kalman_update(static_beacons, agents_without_itself, i)
+        current_agent.kalman_update(
+            static_beacons, agents_without_itself, i, range_meas)
 
 # plot agents and static_beacons in map
 fig = plt.figure()
@@ -190,14 +195,18 @@ ax = fig.add_subplot(111, projection='3d')
 for beacon in static_beacons:
     position = beacon.get_pos()
     ax.scatter(position[0], position[1], position[2])
-ax.plot(agent1_data["ref_pos"][:, 0], agent1_data["ref_pos"]
-        [:, 1], agent1_data["ref_pos"][:, 2])
-ax.plot(agent2_data["ref_pos"][:, 0], agent2_data["ref_pos"]
-        [:, 1], agent2_data["ref_pos"][:, 2])
+for agent in global_agents:
+    ref_pos = agent.get_ref_pos()
+    ax.plot(ref_pos[:, 0], ref_pos[:, 1], ref_pos[:, 2])
 for agent in global_agents:
     traj = np.array(agent.trajectory)
     traj = traj.reshape(-1, 3)
     ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], '--')
-plt.legend(["beacon1", "beacon2", "beacon3",
-           "beacon4", "beacon5", "agent1", "agent2", "EKF_agent1", "EKF_agent2"])
+legends = [f"beacon{i}" for i in range(BEACONS_NUM)]
+legends.extend(f"agent{i}" for i in range(AGENTS_NUM))
+legends.extend(f"EKF_agent{i}" for i in range(AGENTS_NUM))
+ax.set_xlabel('X (m)')
+ax.set_ylabel('Y (m)')
+ax.set_zlabel('Z (m)')
+plt.legend(legends)
 plt.show()
