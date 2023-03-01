@@ -38,6 +38,8 @@ def test_path_gen():
     #              'hi': np.array([10.0, 10.0, 10.0])*1.0}
     # imu.set_mag_error(mag_error)
 
+    # TODO: move motions profiles somewhere else
+
     # start simulation
     sim = ins_sim.Sim([fs, fs_gps, fs_mag],
                       motion_def_path+"//motion_agent1.csv",
@@ -46,6 +48,7 @@ def test_path_gen():
                       mode=None,
                       env=None,
                       algorithm=None)
+
     sim.run(1)
     # save simulation data to files
     sim.results(data_dir='data/agent1')

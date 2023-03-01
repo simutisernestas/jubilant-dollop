@@ -95,6 +95,9 @@ class Agent:
         self.g = np.array([0, 0, 9.794841972265039942e+00])
         self.trajectory = []
 
+        ## Collaborative
+        
+
     def get_ref_pos(self):
         return self.__data["ref_pos"]
 

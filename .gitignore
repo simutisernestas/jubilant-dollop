@@ -5,3 +5,4 @@ data/
 rfloc/
 .vscode
 report/
+__pycache__
