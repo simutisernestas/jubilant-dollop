@@ -1,15 +1,15 @@
-DECENTRALIZED COLLABORATIVE LOCALIZATION USING ULTRA-WIDEBAND RANGING
-https://jhartzer.github.io/assets/pdf/Hartzer_thesis.pdf
 
-Cooperative Localization in Wireless Networks
+NOT RELEVANT Cooperative Localization in Wireless Networks
 https://ieeexplore.ieee.org/document/4802193
 
 Recursive decentralized localization for multi-robot systems with asynchronous pairwise communication
 https://journals.sagepub.com/doi/10.1177/0278364918760698
 
+DECENTRALIZED COLLABORATIVE LOCALIZATION USING ULTRA-WIDEBAND RANGING
 This last one has algorithm in pseudo code, could start right there to simulate
 Also matlab implementation of it:
 https://github.com/unmannedlab/collab_localization/blob/main/matlab/algorithms/DCL.m
+https://jhartzer.github.io/assets/pdf/Hartzer_thesis.pdf
 
 The goal of the special course is to investigate and develop a method for RF-based distributed localization in multi-robot systems. 
 
@@ -22,10 +22,5 @@ The goal of the special course is to investigate and develop a method for RF-bas
 
 Deliverable: Technical report in the form of a double column 6-page IEEE paper, documented code repository, and experimental data.
 
-IMU preintegration - dead reckoning
-Principles of GNSS, inertial, and multisensor integrated navigation systems
-
-Create runs - can be done with different trajectories using sim toool.
-
-TODO: 
- - retrieve the code from github and run the EKF on this data for creating baseline
+TODO:
+ - ...
