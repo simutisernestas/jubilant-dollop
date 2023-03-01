@@ -109,19 +109,27 @@ class CollaborativeKalmanFilter(object):
     https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python
     """
 
-    def __init__(self, dim_x, dim_z, dim_u=0):
+    """ dim_a - extra agents besides the current one
+        agent_id - 0...dim_a-1 
+    """
 
+    def __init__(self, dim_x, dim_z, dim_a, agent_id, dim_u=0):
         self.dim_x = dim_x
         self.dim_z = dim_z
         self.dim_u = dim_u
+        self.dim_a = dim_a
 
-        self.x = zeros((dim_x, 1)) # state
+        self.aid = agent_id
+
+        self.x = zeros((dim_x, 1))  # state
         self.P = eye(dim_x)        # uncertainty covariance
+        # cross covariance of agents
+        self.cP = [eye(dim_x) for i in range(dim_a)]
         self.B = 0                 # control transition matrix
         self.F = np.eye(dim_x)     # state transition matrix
         self.R = eye(dim_z)        # state uncertainty
         self.Q = eye(dim_x)        # process uncertainty
-        self.y = zeros((dim_z, 1)) # residual
+        self.y = zeros((dim_z, 1))  # residual
 
         z = np.array([None]*self.dim_z)
         self.z = reshape_z(z, self.dim_z, self.x.ndim)
@@ -129,7 +137,7 @@ class CollaborativeKalmanFilter(object):
         # gain and residual are computed during the innovation step. We
         # save them so that in case you want to inspect them for various
         # purposes
-        self.K = np.zeros(self.x.shape) # kalman gain
+        self.K = np.zeros(self.x.shape)  # kalman gain
         self.y = zeros((dim_z, 1))
         self.S = np.zeros((dim_z, dim_z))   # system uncertainty
         self.SI = np.zeros((dim_z, dim_z))  # inverse system uncertainty
@@ -148,88 +156,6 @@ class CollaborativeKalmanFilter(object):
         # these will always be a copy of x,P after update() is called
         self.x_post = self.x.copy()
         self.P_post = self.P.copy()
-
-    def predict_update(self, z, HJacobian, Hx, args=(), hx_args=(), u=0):
-        """ Performs the predict/update innovation of the extended Kalman
-        filter.
-
-        Parameters
-        ----------
-
-        z : np.array
-            measurement for this step.
-            If `None`, only predict step is perfomed.
-
-        HJacobian : function
-           function which computes the Jacobian of the H matrix (measurement
-           function). Takes state variable (self.x) as input, along with the
-           optional arguments in args, and returns H.
-
-        Hx : function
-            function which takes as input the state variable (self.x) along
-            with the optional arguments in hx_args, and returns the measurement
-            that would correspond to that state.
-
-        args : tuple, optional, default (,)
-            arguments to be passed into HJacobian after the required state
-            variable.
-
-        hx_args : tuple, optional, default (,)
-            arguments to be passed into Hx after the required state
-            variable.
-
-        u : np.array or scalar
-            optional control vector input to the filter.
-        """
-        #pylint: disable=too-many-locals
-
-        if not isinstance(args, tuple):
-            args = (args,)
-
-        if not isinstance(hx_args, tuple):
-            hx_args = (hx_args,)
-
-        if np.isscalar(z) and self.dim_z == 1:
-            z = np.asarray([z], float)
-
-        F = self.F
-        B = self.B
-        P = self.P
-        Q = self.Q
-        R = self.R
-        x = self.x
-
-        H = HJacobian(x, *args)
-
-        # predict step
-        x = dot(F, x) + dot(B, u)
-        P = dot(F, P).dot(F.T) + Q
-
-        # save prior
-        self.x_prior = np.copy(self.x)
-        self.P_prior = np.copy(self.P)
-
-        # update step
-        PHT = dot(P, H.T)
-        self.S = dot(H, PHT) + R
-        self.SI = linalg.inv(self.S)
-        self.K = dot(PHT, self.SI)
-
-        self.y = z - Hx(x, *hx_args)
-        self.x = x + dot(self.K, self.y)
-
-        I_KH = self._I - dot(self.K, H)
-        self.P = dot(I_KH, P).dot(I_KH.T) + dot(self.K, R).dot(self.K.T)
-
-        # save measurement and posterior state
-        self.z = deepcopy(z)
-        self.x_post = self.x.copy()
-        self.P_post = self.P.copy()
-
-        # set to None to force recompute
-        self._log_likelihood = None
-        self._likelihood = None
-        self._mahalanobis = None
 
     def update(self, z, HJacobian, Hx, R=None, args=(), hx_args=(),
                residual=np.subtract):
@@ -320,6 +246,52 @@ class CollaborativeKalmanFilter(object):
         self.x_post = self.x.copy()
         self.P_post = self.P.copy()
 
+        for i in range(self.dim_a):
+            if i == self.aid:
+                continue
+            self.cP[i] = I_KH @ self.cP[i]
+
+    def rel_update(self, aid, ax, aP, z, HJacobian, Hx, R=None, args=(), hx_args=(),
+                   residual=np.subtract):
+        Pii = self.P.copy()
+        Pij = self.cP[aid].copy()
+        Paa = np.block([[Pii, Pij],
+                        [Pij.T, aP]])
+
+        if z is None:
+            self.z = np.array([[None]*self.dim_z]).T
+            self.x_post = self.x.copy()
+            self.P_post = self.P.copy()
+            return
+        if not isinstance(args, tuple):
+            args = (args,)
+        if not isinstance(hx_args, tuple):
+            hx_args = (hx_args,)
+        if R is None:
+            R = self.R
+        elif np.isscalar(R):
+            R = eye(self.dim_z) * R
+        if np.isscalar(z) and self.dim_z == 1:
+            z = np.asarray([z], float)
+
+        H = HJacobian(self.x, ax, *args)
+        Hax = HJacobian(ax, self.x, *args)
+        nz = Hx(z, *hx_args)
+
+        Fa = np.block([H, Hax])
+
+        Ka = Paa @ Fa.T @ np.linalg.inv(Fa @ Paa @ Fa.T + np.eye(1))  # TODO:
+        Xij = np.block([[self.x],
+                        [ax]])
+        Xij += Ka @ (z - nz)
+        # update the state
+        self.x = Xij[:self.dim_x]
+        xj = Xij[self.dim_x:]
+        Paa = (np.eye(self.dim_x * 2) - Ka @ Fa) @ Paa
+        self.cP[aid] = Paa[:self.dim_x, self.dim_x:]
+        # the rest will be outside of filter
+        return (xj, Paa[self.dim_x:, self.dim_x:])
+
     def predict_x(self, u=0):
         """
         Predicts the next state of X. If you need to
@@ -348,6 +320,11 @@ class CollaborativeKalmanFilter(object):
         # save prior
         self.x_prior = np.copy(self.x)
         self.P_prior = np.copy(self.P)
+
+        for i in range(self.dim_a):
+            if i == self.aid:
+                continue
+            self.cP[i] = self.F @ self.cP[i]
 
     @property
     def log_likelihood(self):
@@ -385,7 +362,8 @@ class CollaborativeKalmanFilter(object):
         mahalanobis : float
         """
         if self._mahalanobis is None:
-            self._mahalanobis = sqrt(float(dot(dot(self.y.T, self.SI), self.y)))
+            self._mahalanobis = sqrt(
+                float(dot(dot(self.y.T, self.SI), self.y)))
         return self._mahalanobis
 
     def __repr__(self):
@@ -404,4 +382,4 @@ class CollaborativeKalmanFilter(object):
             pretty_str('likelihood', self.likelihood),
             pretty_str('log-likelihood', self.log_likelihood),
             pretty_str('mahalanobis', self.mahalanobis)
-            ])
+        ])
