@@ -6,9 +6,13 @@ import transforms3d as tf
 import matplotlib.pyplot as plt
 
 DEBUG = False
-BEACONS_NUM = 2
+BEACONS_NUM = 3
 AGENTS_NUM = 2
 GEN_DATA = False
+NOISE_STD = 1
+DISABLE_IMU = False
+REG_EKF = True
+
 
 if GEN_DATA:
     import subprocess
@@ -29,13 +33,13 @@ class Beacon:
 
 
 def getH(x_op: np.ndarray, beacons):
-    """    
+    """
     pr - robot position
     pbi = beacon_i position
     J = [
-        d/dx h(x) = norm(pr - pb1), 
+        d/dx h(x) = norm(pr - pb1),
         d/dx h(x) = norm(pr - pb2),
-        ... 
+        ...
         d/dx h(x) = norm(pr - pbn),
     ]
     first row of J (distance function h(x) to the beacon 1):
@@ -76,11 +80,13 @@ def hx(x, beacons):
 
 
 class Agent:
-    DIM_Z = BEACONS_NUM + (AGENTS_NUM - 1)
     DIM_X = 9
     DIM_U = 6
 
     def __init__(self, data, aid) -> None:
+        global REG_EKF
+        self.DIM_Z = (BEACONS_NUM + (AGENTS_NUM - 1)
+                      ) if REG_EKF else BEACONS_NUM
         self.__data = data
         self.id = aid
         self.filter = CollaborativeKalmanFilter(
@@ -101,9 +107,10 @@ class Agent:
         B[6:9, 3:6] = Idt
         self.filter.F = F
         self.filter.B = B
-        self.filter.P = np.eye(9)*1e3
+        self.filter.P = np.eye(9)
         self.filter.R = np.eye(self.DIM_Z)
-        self.filter.Q = np.eye(9)*1e-3
+        self.filter.rR *= 1  # relative
+        self.filter.Q = np.eye(9)
         self.g = np.array([0, 0, 9.794841972265039942e+00])
         self.trajectory = []
 
@@ -116,24 +123,9 @@ class Agent:
     def num_data(self):
         return len(self.__data["ref_pos"])
 
-    def kalman_update(self, beacons, agents, step_index, range_meas=False):
-        NOISE_STD = 1
-        gt_dists = []
-
-        for j in range(AGENTS_NUM+1):
-            # check if self.__data has uwb-static key
-            if f"uwb-agent{j+1}" not in self.__data.keys():
-                continue
-            distance = self.__data[f"uwb-agent{j+1}"][step_index] + \
-                np.random.normal(scale=NOISE_STD)
-            z = np.array(distance).reshape(-1, 1)
-            to_pass_beacons = [agents[0]]  # TODO: hardcoded
-            ax = agents[0].filter.x.copy()
-            aP = agents[0].filter.P.copy()
-            (xj, Pj) = self.filter.rel_update(self.id, ax,
-                                              aP, z, getHraw, hx,
-                                              hx_args=(to_pass_beacons, ))
-        return
+    def kalman_update(
+            self, beacons, agents, step_index,
+            range_meas=False, access_to_beacons=True):
         # save position
         self.trajectory.append(self.filter.x[:3].copy())
 
@@ -151,6 +143,8 @@ class Agent:
                        [np.sin(theta), 0, np.cos(phi)*np.cos(theta)]])
         domega = domega * np.pi / 180
         u = np.concatenate((acc, Rw @ domega)).reshape(6, 1)
+        if DISABLE_IMU:
+            u *= 0
         self.filter.predict(u=u)
         if DEBUG:
             print(f"filter predict: {self.filter.x}")
@@ -158,27 +152,54 @@ class Agent:
         if not range_meas:
             return
 
-        # update
-        NOISE_STD = 1
-        gt_dists = [
-            self.__data[f"uwb-static{i}"][step_index][0] +
-            np.random.normal(scale=NOISE_STD) for i in range(BEACONS_NUM)]
-
-        for j in range(AGENTS_NUM+1):
-            # check if self.__data has uwb-static key
-            if f"uwb-agent{j+1}" not in self.__data.keys():
-                continue
-            gt_dists.append(
-                self.__data[f"uwb-agent{j+1}"][step_index] +
-                np.random.normal(scale=NOISE_STD))
-
-        if DEBUG:
-            print(f"True dists: {gt_dists}")
-        z = np.array(gt_dists).reshape(-1, 1)
-        to_pass_beacons = beacons.copy()
-        to_pass_beacons.extend(agents)
-        self.filter.update(z, getH, hx, args=(
-            to_pass_beacons), hx_args=(to_pass_beacons))
+        if REG_EKF:
+            gt_dists = [
+                self.__data[f"uwb-static{i}"][step_index][0] +
+                np.random.normal(scale=NOISE_STD) for i in range(BEACONS_NUM)]
+            for j in range(AGENTS_NUM+1):
+                # check if self.__data has uwb-static key
+                if f"uwb-agent{j+1}" not in self.__data.keys():
+                    continue
+                gt_dists.append(
+                    self.__data[f"uwb-agent{j+1}"][step_index] +
+                    np.random.normal(scale=NOISE_STD))
+            if DEBUG:
+                print(f"True dists: {gt_dists}")
+            z = np.array(gt_dists).reshape(-1, 1)
+            to_pass_beacons = beacons.copy()
+            to_pass_beacons.extend(agents)
+            self.filter.update(z, getH, hx, args=(
+                to_pass_beacons), hx_args=(to_pass_beacons))
+        else:
+            # static
+            gt_dists = [
+                self.__data[f"uwb-static{i}"][step_index][0] +
+                np.random.normal(scale=NOISE_STD) for i in range(BEACONS_NUM)]
+            z = np.array(gt_dists).reshape(-1, 1)
+            to_pass_beacons = beacons.copy()
+            self.filter.update(z, getH, hx, args=(
+                to_pass_beacons), hx_args=(to_pass_beacons))
+            # dynamic
+            for j in range(AGENTS_NUM+1):
+                # check if self.__data has uwb-static key
+                if f"uwb-agent{j+1}" not in self.__data.keys():
+                    continue
+                distance = self.__data[f"uwb-agent{j+1}"][step_index] + \
+                    np.random.normal(scale=NOISE_STD)
+                z = np.array(distance).reshape(-1, 1)
+                if len(agents) != 1:
+                    raise Exception("Not implemented")
+                agent = agents[0]  # TODO: hardcoded
+                to_pass_beacons = [agent]
+                ax = agent.filter.x.copy()
+                aP = agent.filter.P.copy()
+                aid = agent.id
+                (xj, Pj) = self.filter.rel_update(aid, ax,
+                                                  aP, z, getHraw, hx,
+                                                  hx_args=(to_pass_beacons, ))
+                agent.filter.x = xj
+                agent.filter.P = Pj
+                agent.filter.cP[self.id] = np.eye(9)
 
 
 def take_in_data(agent_dir):
@@ -193,7 +214,7 @@ def take_in_data(agent_dir):
     return data
 
 
-print("Loading data...")
+print("Loading data...\n")
 agent1_data = take_in_data("data/agent1")
 agent2_data = take_in_data("data/agent2")
 
@@ -207,38 +228,74 @@ for i in range(BEACONS_NUM):
     x0 = agent1_data[f"uwb-static{i}"][0][1:] - STARTING_POS
     static_beacons.append(Beacon(str(i), x0))
 
-Agent1 = Agent(agent1_data, 0)
-Agent2 = Agent(agent2_data, 1)
-global_agents = [Agent1, Agent2]
 
-print("Running Kalman filter...")
-for i in range(Agent1.num_data()-1):
-    range_meas = (i % 10 == 0)
-    for current_agent in global_agents:
-        agents_without_itself = [
-            a for a in global_agents if a is not current_agent]
-        current_agent.kalman_update(
-            static_beacons, agents_without_itself, i, range_meas)
+def main(plot=True, regular=True):
+    global REG_EKF
+    REG_EKF = regular
 
-print("Plotting...")
-# plot agents and static_beacons in map
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-for beacon in static_beacons:
-    position = beacon.get_pos()
-    ax.scatter(position[0], position[1], position[2])
-for agent in global_agents:
-    ref_pos = agent.get_ref_pos()
-    ax.plot(ref_pos[:, 0], ref_pos[:, 1], ref_pos[:, 2])
-for agent in global_agents:
-    traj = np.array(agent.trajectory)
-    traj = traj.reshape(-1, 3)
-    ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], '--')
-legends = [f"beacon{i}" for i in range(BEACONS_NUM)]
-legends.extend(f"agent{i}" for i in range(AGENTS_NUM))
-legends.extend(f"EKF_agent{i}" for i in range(AGENTS_NUM))
-ax.set_xlabel('X (m)')
-ax.set_ylabel('Y (m)')
-ax.set_zlabel('Z (m)')
-plt.legend(legends)
-plt.show()
+    Agent1 = Agent(agent1_data, 0)
+    Agent2 = Agent(agent2_data, 1)
+    global_agents = [Agent1, Agent2]
+
+    which = "EKF" if REG_EKF else "CKF"
+    print(f"Running {which}...")
+    for i in range(Agent1.num_data()-1):
+        range_meas = (i % 10 == 0)
+        for index, current_agent in enumerate(global_agents):
+            access_to_beacons = False if index == 0 else True
+            agents_without_itself = [
+                a for a in global_agents if a is not current_agent]
+            current_agent.kalman_update(
+                static_beacons, agents_without_itself, i, range_meas, access_to_beacons)
+
+    for agent in global_agents:
+        ref_pos = agent.get_ref_pos()
+        traj = np.array(agent.trajectory)
+        traj = traj.reshape(-1, 3)
+        # compute absolute error
+        error = np.linalg.norm(ref_pos[:-1] - traj, axis=1)
+        print(f"Error agent[{agent.id}]: {error.mean()}")
+
+    if not plot:
+        return
+
+    print("Plotting...")
+    # plot agents and static_beacons in map
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    for beacon in static_beacons:
+        position = beacon.get_pos()
+        ax.scatter(position[0], position[1], position[2])
+    for agent in global_agents:
+        ref_pos = agent.get_ref_pos()
+        ax.plot(ref_pos[:, 0], ref_pos[:, 1], ref_pos[:, 2])
+    for agent in global_agents:
+        traj = np.array(agent.trajectory)
+        traj = traj.reshape(-1, 3)
+        ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], '--')
+    legends = [f"beacon{i}" for i in range(BEACONS_NUM)]
+    legends.extend(f"agent{i}" for i in range(AGENTS_NUM))
+    legends.extend(f"EKF_agent{i}" for i in range(AGENTS_NUM))
+    ax.set_xlabel('X (m)')
+    ax.set_ylabel('Y (m)')
+    ax.set_zlabel('Z (m)')
+    plt.legend(legends)
+    plt.show()
+
+
+if __name__ == "__main__":
+    import time
+    NRUN = 1
+    times = []
+    for i in range(NRUN):
+        start = time.time()
+        main(plot=True, regular=False)
+        end = time.time()
+        times.append(end-start)
+    print(f"Average time: {np.mean(times)}\n")
+    for i in range(NRUN):
+        start = time.time()
+        main(plot=True, regular=True)
+        end = time.time()
+        times.append(end-start)
+    print(f"Average time: {np.mean(times)}")

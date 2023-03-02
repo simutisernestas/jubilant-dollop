@@ -124,10 +124,11 @@ class CollaborativeKalmanFilter(object):
         self.x = zeros((dim_x, 1))  # state
         self.P = eye(dim_x)        # uncertainty covariance
         # cross covariance of agents
-        self.cP = [eye(dim_x) for i in range(dim_a)]
+        self.cP = [eye(dim_x) for i in range(dim_a)]  # TODO: configurable
         self.B = 0                 # control transition matrix
         self.F = np.eye(dim_x)     # state transition matrix
         self.R = eye(dim_z)        # state uncertainty
+        self.rR = eye(dim_a-1)        # state uncertainty
         self.Q = eye(dim_x)        # process uncertainty
         self.y = zeros((dim_z, 1))  # residual
 
@@ -276,21 +277,21 @@ class CollaborativeKalmanFilter(object):
 
         H = HJacobian(self.x, ax, *args)
         Hax = HJacobian(ax, self.x, *args)
-        nz = Hx(z, *hx_args)
+        nz = Hx(self.x, *hx_args)
 
         Fa = np.block([H, Hax])
 
-        Ka = Paa @ Fa.T @ np.linalg.inv(Fa @ Paa @ Fa.T + np.eye(1))  # TODO:
+        Ka = Paa @ Fa.T @ np.linalg.inv(Fa @ Paa @ Fa.T + self.rR)  # TODO:
         Xij = np.block([[self.x],
                         [ax]])
         Xij += Ka @ (z - nz)
         # update the state
-        self.x = Xij[:self.dim_x]
+        self.x = Xij[:self.dim_x].copy()
         xj = Xij[self.dim_x:]
         Paa = (np.eye(self.dim_x * 2) - Ka @ Fa) @ Paa
-        self.cP[aid] = Paa[:self.dim_x, self.dim_x:]
+        self.cP[aid] = Paa[:self.dim_x, self.dim_x:].copy()
         # the rest will be outside of filter
-        return (xj, Paa[self.dim_x:, self.dim_x:])
+        return (xj.copy(), Paa[self.dim_x:, self.dim_x:].copy())
 
     def predict_x(self, u=0):
         """

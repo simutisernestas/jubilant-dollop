@@ -31,7 +31,7 @@ def test_path_gen():
     test only path generation in Sim.
     '''
     # choose a built-in IMU model, typical for IMU381
-    imu_err = 'high-accuracy'
+    imu_err = 'low-accuracy'
     # generate GPS and magnetometer data
     imu = imu_model.IMU(accuracy=imu_err, axis=9, gps=True)
     # mag_error = {'si': np.eye(3) + np.random.randn(3, 3)*0.1,
@@ -81,7 +81,7 @@ def uwb_gen():
         ref_pos[agent_dir] = data
 
     # generate uwb static beacons
-    STATIC_STD_FROM_START = 100
+    STATIC_STD_FROM_START = 150
     dict_items = ref_pos.items()
     a1, ref1 = next(iter(dict_items))
     STARTING_POS = ref1[0]
