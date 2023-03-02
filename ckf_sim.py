@@ -5,9 +5,10 @@ from ckf import CollaborativeKalmanFilter
 import transforms3d as tf
 import matplotlib.pyplot as plt
 
+
 DEBUG = False
-BEACONS_NUM = 3
-AGENTS_NUM = 2
+BEACONS_NUM = 2
+AGENTS_NUM = 3
 GEN_DATA = False
 NOISE_STD = 1
 DISABLE_IMU = False
@@ -180,16 +181,18 @@ class Agent:
             self.filter.update(z, getH, hx, args=(
                 to_pass_beacons), hx_args=(to_pass_beacons))
             # dynamic
-            for j in range(AGENTS_NUM+1):
+            for j in range(AGENTS_NUM):
                 # check if self.__data has uwb-static key
                 if f"uwb-agent{j+1}" not in self.__data.keys():
                     continue
                 distance = self.__data[f"uwb-agent{j+1}"][step_index] + \
                     np.random.normal(scale=NOISE_STD)
                 z = np.array(distance).reshape(-1, 1)
-                if len(agents) != 1:
-                    raise Exception("Not implemented")
-                agent = agents[0]  # TODO: hardcoded
+                agent = None
+                for a in agents:
+                    if a.id == j:
+                        agent = a
+                        break
                 to_pass_beacons = [agent]
                 ax = agent.filter.x.copy()
                 aP = agent.filter.P.copy()
@@ -217,11 +220,12 @@ def take_in_data(agent_dir):
 print("Loading data...\n")
 agent1_data = take_in_data("data/agent1")
 agent2_data = take_in_data("data/agent2")
+agent3_data = take_in_data("data/agent3")
 
 STARTING_POS = agent1_data["ref_pos"][0]
-
 agent1_data["ref_pos"] = agent1_data["ref_pos"] - STARTING_POS
 agent2_data["ref_pos"] = agent2_data["ref_pos"] - STARTING_POS
+agent3_data["ref_pos"] = agent3_data["ref_pos"] - STARTING_POS
 
 static_beacons = []
 for i in range(BEACONS_NUM):
@@ -235,7 +239,8 @@ def main(plot=True, regular=True):
 
     Agent1 = Agent(agent1_data, 0)
     Agent2 = Agent(agent2_data, 1)
-    global_agents = [Agent1, Agent2]
+    Agent3 = Agent(agent3_data, 2)
+    global_agents = [Agent1, Agent2, Agent3]
 
     which = "EKF" if REG_EKF else "CKF"
     print(f"Running {which}...")
@@ -284,18 +289,20 @@ def main(plot=True, regular=True):
 
 
 if __name__ == "__main__":
+    np.random.seed(0)
     import time
     NRUN = 1
     times = []
     for i in range(NRUN):
         start = time.time()
-        main(plot=True, regular=False)
+        main(plot=False, regular=True)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}\n")
+    times = []
     for i in range(NRUN):
         start = time.time()
-        main(plot=True, regular=True)
+        main(plot=False, regular=False)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}")

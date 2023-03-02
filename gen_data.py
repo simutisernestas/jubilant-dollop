@@ -39,33 +39,20 @@ def test_path_gen():
     # imu.set_mag_error(mag_error)
 
     # TODO: move motions profiles somewhere else
+    NUM_OF_AGENTS = 3
+    for i in range(NUM_OF_AGENTS):
+        # start simulation
+        sim = ins_sim.Sim([fs, fs_gps, fs_mag],
+                          motion_def_path+f"//motion_agent{i+1}.csv",
+                          ref_frame=1,
+                          imu=imu,
+                          mode=None,
+                          env=None,
+                          algorithm=None)
 
-    # start simulation
-    sim = ins_sim.Sim([fs, fs_gps, fs_mag],
-                      motion_def_path+"//motion_agent1.csv",
-                      ref_frame=1,
-                      imu=imu,
-                      mode=None,
-                      env=None,
-                      algorithm=None)
-
-    sim.run(1)
-    # save simulation data to files
-    sim.results(data_dir='data/agent1')
-
-    # start simulation
-    sim = ins_sim.Sim([fs, fs_gps, fs_mag],
-                      motion_def_path+"//motion_agent2.csv",
-                      ref_frame=1,
-                      imu=imu,
-                      mode=None,
-                      env=None,
-                      algorithm=None)
-    sim.run(1)
-    # save simulation data to files
-    sim.results(data_dir='data/agent2')
-    # plot data, 3d plot of reference positoin, 2d plots of gyro and accel
-    # sim.plot(['ref_pos', 'gps', 'accel', 'mag', 'gyro'], opt={'ref_pos': '3d'})
+        sim.run(1)
+        # save simulation data to files
+        sim.results(data_dir=f'data/agent{i+1}')
 
 
 def uwb_gen():

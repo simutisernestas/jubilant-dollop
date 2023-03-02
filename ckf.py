@@ -128,7 +128,7 @@ class CollaborativeKalmanFilter(object):
         self.B = 0                 # control transition matrix
         self.F = np.eye(dim_x)     # state transition matrix
         self.R = eye(dim_z)        # state uncertainty
-        self.rR = eye(dim_a-1)        # state uncertainty
+        self.rR = eye(1)           # TODO:
         self.Q = eye(dim_x)        # process uncertainty
         self.y = zeros((dim_z, 1))  # residual
 
