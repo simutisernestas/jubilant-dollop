@@ -1,113 +1,9 @@
 from __future__ import (absolute_import, division, unicode_literals)
-from copy import deepcopy
-from math import log, exp, sqrt
-import sys
 import numpy as np
 from numpy import dot, zeros, eye
-import scipy.linalg as linalg
-from filterpy.stats import logpdf
-from filterpy.common import pretty_str, reshape_z
 
 
 class CollaborativeKalmanFilter(object):
-
-    """ Implements an extended Kalman filter (EKF). You are responsible for
-    setting the various state variables to reasonable values; the defaults
-    will  not give you a functional filter.
-
-    You will have to set the following attributes after constructing this
-    object for the filter to perform properly. Please note that there are
-    various checks in place to ensure that you have made everything the
-    'correct' size. However, it is possible to provide incorrectly sized
-    arrays such that the linear algebra can not perform an operation.
-    It can also fail silently - you can end up with matrices of a size that
-    allows the linear algebra to work, but are the wrong shape for the problem
-    you are trying to solve.
-
-    Parameters
-    ----------
-
-    dim_x : int
-        Number of state variables for the Kalman filter. For example, if
-        you are tracking the position and velocity of an object in two
-        dimensions, dim_x would be 4.
-
-        This is used to set the default size of P, Q, and u
-
-    dim_z : int
-        Number of of measurement inputs. For example, if the sensor
-        provides you with position in (x,y), dim_z would be 2.
-
-    Attributes
-    ----------
-    x : numpy.array(dim_x, 1)
-        State estimate vector
-
-    P : numpy.array(dim_x, dim_x)
-        Covariance matrix
-
-    x_prior : numpy.array(dim_x, 1)
-        Prior (predicted) state estimate. The *_prior and *_post attributes
-        are for convienence; they store the  prior and posterior of the
-        current epoch. Read Only.
-
-    P_prior : numpy.array(dim_x, dim_x)
-        Prior (predicted) state covariance matrix. Read Only.
-
-    x_post : numpy.array(dim_x, 1)
-        Posterior (updated) state estimate. Read Only.
-
-    P_post : numpy.array(dim_x, dim_x)
-        Posterior (updated) state covariance matrix. Read Only.
-
-    R : numpy.array(dim_z, dim_z)
-        Measurement noise matrix
-
-    Q : numpy.array(dim_x, dim_x)
-        Process noise matrix
-
-    F : numpy.array()
-        State Transition matrix
-
-    H : numpy.array(dim_x, dim_x)
-        Measurement function
-
-    y : numpy.array
-        Residual of the update step. Read only.
-
-    K : numpy.array(dim_x, dim_z)
-        Kalman gain of the update step. Read only.
-
-    S :  numpy.array
-        Systen uncertaintly projected to measurement space. Read only.
-
-    z : ndarray
-        Last measurement used in update(). Read only.
-
-    log_likelihood : float
-        log-likelihood of the last measurement. Read only.
-
-    likelihood : float
-        likelihood of last measurment. Read only.
-
-        Computed from the log-likelihood. The log-likelihood can be very
-        small,  meaning a large negative value such as -28000. Taking the
-        exp() of that results in 0.0, which can break typical algorithms
-        which multiply by this value, so by default we always return a
-        number >= sys.float_info.min.
-
-    mahalanobis : float
-        mahalanobis distance of the innovation. E.g. 3 means measurement
-        was 3 standard deviations away from the predicted value.
-
-        Read only.
-
-    Examples
-    --------
-
-    See my book Kalman and Bayesian Filters in Python
-    https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python
-    """
 
     """ dim_a - extra agents besides the current one
         agent_id - 0...dim_a-1 
@@ -132,9 +28,6 @@ class CollaborativeKalmanFilter(object):
         self.Q = eye(dim_x)        # process uncertainty
         self.y = zeros((dim_z, 1))  # residual
 
-        z = np.array([None]*self.dim_z)
-        self.z = reshape_z(z, self.dim_z, self.x.ndim)
-
         # gain and residual are computed during the innovation step. We
         # save them so that in case you want to inspect them for various
         # purposes
@@ -145,10 +38,6 @@ class CollaborativeKalmanFilter(object):
 
         # identity matrix. Do not alter this.
         self._I = np.eye(dim_x)
-
-        self._log_likelihood = log(sys.float_info.min)
-        self._likelihood = sys.float_info.min
-        self._mahalanobis = None
 
         # these will always be a copy of x,P after predict() is called
         self.x_prior = self.x.copy()
@@ -201,12 +90,6 @@ class CollaborativeKalmanFilter(object):
             example, if they are angles)
         """
 
-        if z is None:
-            self.z = np.array([[None]*self.dim_z]).T
-            self.x_post = self.x.copy()
-            self.P_post = self.P.copy()
-            return
-
         if not isinstance(args, tuple):
             args = (args,)
 
@@ -232,7 +115,7 @@ class CollaborativeKalmanFilter(object):
 
         PHT = dot(self.P, H.T)
         self.S = dot(H, PHT) + R
-        self.K = PHT.dot(linalg.inv(self.S))
+        self.K = PHT.dot(np.linalg.inv(self.S))
 
         hx = Hx(self.x, *hx_args)
         self.y = residual(z, hx)
@@ -244,13 +127,7 @@ class CollaborativeKalmanFilter(object):
         I_KH = self._I - dot(self.K, H)
         self.P = dot(I_KH, self.P).dot(I_KH.T) + dot(self.K, R).dot(self.K.T)
 
-        # set to None to force recompute
-        self._log_likelihood = None
-        self._likelihood = None
-        self._mahalanobis = None
-
-        # save measurement and posterior state
-        self.z = deepcopy(z)
+        # save posterior state
         self.x_post = self.x.copy()
         self.P_post = self.P.copy()
 
@@ -261,16 +138,12 @@ class CollaborativeKalmanFilter(object):
 
     def rel_update(self, aid, ax, aP, aSji, z, HJacobian, Hx, R=None, args=(), hx_args=(),
                    residual=np.subtract):
+        """ Relative update between two agents using collaborative extended Kalman filter."""
         Pii = self.P.copy()
         Pij = self.cP[aid].copy() @ aSji.T
         Paa = np.block([[Pii, Pij],
                         [Pij.T, aP]])
 
-        if z is None:
-            self.z = np.array([[None]*self.dim_z]).T
-            self.x_post = self.x.copy()
-            self.P_post = self.P.copy()
-            return
         if not isinstance(args, tuple):
             args = (args,)
         if not isinstance(hx_args, tuple):
@@ -348,61 +221,3 @@ class CollaborativeKalmanFilter(object):
             if i == self.aid:
                 continue
             self.cP[i] = self.F @ self.cP[i]
-
-    @property
-    def log_likelihood(self):
-        """
-        log-likelihood of the last measurement.
-        """
-
-        if self._log_likelihood is None:
-            self._log_likelihood = logpdf(x=self.y, cov=self.S)
-        return self._log_likelihood
-
-    @property
-    def likelihood(self):
-        """
-        Computed from the log-likelihood. The log-likelihood can be very
-        small,  meaning a large negative value such as -28000. Taking the
-        exp() of that results in 0.0, which can break typical algorithms
-        which multiply by this value, so by default we always return a
-        number >= sys.float_info.min.
-        """
-        if self._likelihood is None:
-            self._likelihood = exp(self.log_likelihood)
-            if self._likelihood == 0:
-                self._likelihood = sys.float_info.min
-        return self._likelihood
-
-    @property
-    def mahalanobis(self):
-        """
-        Mahalanobis distance of innovation. E.g. 3 means measurement
-        was 3 standard deviations away from the predicted value.
-
-        Returns
-        -------
-        mahalanobis : float
-        """
-        if self._mahalanobis is None:
-            self._mahalanobis = sqrt(
-                float(dot(dot(self.y.T, self.SI), self.y)))
-        return self._mahalanobis
-
-    def __repr__(self):
-        return '\n'.join([
-            'KalmanFilter object',
-            pretty_str('x', self.x),
-            pretty_str('P', self.P),
-            pretty_str('x_prior', self.x_prior),
-            pretty_str('P_prior', self.P_prior),
-            pretty_str('F', self.F),
-            pretty_str('Q', self.Q),
-            pretty_str('R', self.R),
-            pretty_str('K', self.K),
-            pretty_str('y', self.y),
-            pretty_str('S', self.S),
-            pretty_str('likelihood', self.likelihood),
-            pretty_str('log-likelihood', self.log_likelihood),
-            pretty_str('mahalanobis', self.mahalanobis)
-        ])

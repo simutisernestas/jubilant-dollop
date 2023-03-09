@@ -1,8 +1,9 @@
 groves_005/
 gnss-ins-sim/
 *.pdf
-data/
+data/*
 rfloc/
 .vscode
 report/
 __pycache__
+!/data/motion-profiles/

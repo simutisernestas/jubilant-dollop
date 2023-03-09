@@ -311,7 +311,7 @@ if __name__ == "__main__":
     times = []
     for i in range(NRUN):
         start = time.time()
-        main(plot=True, regular=True)
+        main(plot=True, regular=False)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}")
