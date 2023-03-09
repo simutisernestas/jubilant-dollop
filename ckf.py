@@ -124,7 +124,7 @@ class CollaborativeKalmanFilter(object):
         self.x = zeros((dim_x, 1))  # state
         self.P = eye(dim_x)        # uncertainty covariance
         # cross covariance of agents
-        self.cP = [eye(dim_x) for i in range(dim_a)]  # TODO: configurable
+        self.cP = [eye(dim_x) for _ in range(dim_a)]  # TODO: configurable
         self.B = 0                 # control transition matrix
         self.F = np.eye(dim_x)     # state transition matrix
         self.R = eye(dim_z)        # state uncertainty
@@ -223,6 +223,13 @@ class CollaborativeKalmanFilter(object):
 
         H = HJacobian(self.x, *args)
 
+        # check for inf in H
+        if np.isinf(H).any():
+            raise ValueError("H contains inf")
+        # check for nan in H
+        if np.isnan(H).any():
+            raise ValueError("H contains nan")
+
         PHT = dot(self.P, H.T)
         self.S = dot(H, PHT) + R
         self.K = PHT.dot(linalg.inv(self.S))
@@ -252,10 +259,10 @@ class CollaborativeKalmanFilter(object):
                 continue
             self.cP[i] = I_KH @ self.cP[i]
 
-    def rel_update(self, aid, ax, aP, z, HJacobian, Hx, R=None, args=(), hx_args=(),
+    def rel_update(self, aid, ax, aP, aSji, z, HJacobian, Hx, R=None, args=(), hx_args=(),
                    residual=np.subtract):
         Pii = self.P.copy()
-        Pij = self.cP[aid].copy()
+        Pij = self.cP[aid].copy() @ aSji.T
         Paa = np.block([[Pii, Pij],
                         [Pij.T, aP]])
 
@@ -289,9 +296,23 @@ class CollaborativeKalmanFilter(object):
         self.x = Xij[:self.dim_x].copy()
         xj = Xij[self.dim_x:]
         Paa = (np.eye(self.dim_x * 2) - Ka @ Fa) @ Paa
-        self.cP[aid] = Paa[:self.dim_x, self.dim_x:].copy()
+        self.cP[aid] = Paa[:self.dim_x, self.dim_x:].copy()  # update Sij
+
+        Pii = Paa[:self.dim_x, :self.dim_x]
+        self.P = Pii.copy()
+        # enforce symmetry, solely for numerical stability
+        self.P = (self.P + self.P.T)/2
+
+        for i in range(self.dim_a):
+            if i == self.aid:
+                continue
+            if i == aid:
+                continue
+            self.cP[i] = Pii @ np.linalg.inv(Pii) @ self.cP[i]
+
         # the rest will be outside of filter
-        return (xj.copy(), Paa[self.dim_x:, self.dim_x:].copy())
+        Pjj = Paa[self.dim_x:, self.dim_x:]
+        return (xj.copy(), Pjj.copy())
 
     def predict_x(self, u=0):
         """
@@ -322,6 +343,7 @@ class CollaborativeKalmanFilter(object):
         self.x_prior = np.copy(self.x)
         self.P_prior = np.copy(self.P)
 
+        # CKF addition
         for i in range(self.dim_a):
             if i == self.aid:
                 continue

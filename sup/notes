@@ -11,6 +11,9 @@ Also matlab implementation of it:
 https://github.com/unmannedlab/collab_localization/blob/main/matlab/algorithms/DCL.m
 https://jhartzer.github.io/assets/pdf/Hartzer_thesis.pdf
 
+<!-- IMU integration -->
+https://nitinjsanket.github.io/tutorials/attitudeest/kf 
+
 The goal of the special course is to investigate and develop a method for RF-based distributed localization in multi-robot systems. 
 
 1. Investigate state-of-the-art methods for RF-based distributed localization in multi-robot systems.

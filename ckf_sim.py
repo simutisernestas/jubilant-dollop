@@ -53,10 +53,18 @@ def getH(x_op: np.ndarray, beacons):
     for i, b in enumerate(beacons):
         diff = x_op[:3] - b.get_pos()
         the_norm = np.linalg.norm(diff)
+        if (the_norm == 0.0).any():
+            raise Exception("Division by zero. ANY")
         if (diff == 0.0).all():
             print(x_op[:3], b.get_pos())
             raise Exception("Division by zero")
         H[i][:3] = (diff / the_norm).T
+    # check for inf in H
+    if np.isinf(H).any():
+        raise ValueError("H contains inf")
+    # check for inf in H
+    if np.isnan(H).any():
+        raise ValueError("H contains inf")
     return H
 
 
@@ -110,8 +118,8 @@ class Agent:
         self.filter.B = B
         self.filter.P = np.eye(9)
         self.filter.R = np.eye(self.DIM_Z)
-        self.filter.rR *= 1  # relative
-        self.filter.Q = np.eye(9)
+        self.filter.rR *= 1e1  # relative
+        self.filter.Q = np.eye(9) * 1e-2  # TODO: debug
         self.g = np.array([0, 0, 9.794841972265039942e+00])
         self.trajectory = []
 
@@ -124,7 +132,7 @@ class Agent:
     def num_data(self):
         return len(self.__data["ref_pos"])
 
-    def kalman_update(
+    def kalman_update(  # TODO: could be nice to have acccess implemented : )
             self, beacons, agents, step_index,
             range_meas=False, access_to_beacons=True):
         # save position
@@ -197,12 +205,19 @@ class Agent:
                 ax = agent.filter.x.copy()
                 aP = agent.filter.P.copy()
                 aid = agent.id
-                (xj, Pj) = self.filter.rel_update(aid, ax,
-                                                  aP, z, getHraw, hx,
-                                                  hx_args=(to_pass_beacons, ))
+                aSji = agent.filter.cP[self.id]
+                (xj, Pj) = self.filter.rel_update(
+                    aid, ax, aP, aSji, z, getHraw, hx,
+                    hx_args=(to_pass_beacons, ))
                 agent.filter.x = xj
                 agent.filter.P = Pj
-                agent.filter.cP[self.id] = np.eye(9)
+                self.filter.cP[self.id] = np.eye(9)
+                for k in range(AGENTS_NUM):
+                    if k == self.id:
+                        continue
+                    if k == aid:
+                        continue
+                    agent.filter.cP[k] = np.eye(9)
 
 
 def take_in_data(agent_dir):
@@ -270,7 +285,8 @@ def main(plot=True, regular=True):
     ax = fig.add_subplot(111, projection='3d')
     for beacon in static_beacons:
         position = beacon.get_pos()
-        ax.scatter(position[0], position[1], position[2])
+        # increase scatter size
+        ax.scatter(position[0], position[1], position[2], s=100)
     for agent in global_agents:
         ref_pos = agent.get_ref_pos()
         ax.plot(ref_pos[:, 0], ref_pos[:, 1], ref_pos[:, 2])
@@ -295,14 +311,7 @@ if __name__ == "__main__":
     times = []
     for i in range(NRUN):
         start = time.time()
-        main(plot=False, regular=True)
-        end = time.time()
-        times.append(end-start)
-    print(f"Average time: {np.mean(times)}\n")
-    times = []
-    for i in range(NRUN):
-        start = time.time()
-        main(plot=False, regular=False)
+        main(plot=True, regular=True)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}")

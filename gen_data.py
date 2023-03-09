@@ -68,7 +68,7 @@ def uwb_gen():
         ref_pos[agent_dir] = data
 
     # generate uwb static beacons
-    STATIC_STD_FROM_START = 150
+    STATIC_STD_FROM_START = 300
     dict_items = ref_pos.items()
     a1, ref1 = next(iter(dict_items))
     STARTING_POS = ref1[0]
