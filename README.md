@@ -1,3 +1,10 @@
+## Collaborative EKF Localization 
+
+Filter is implemented on UWB range measurements & IMU. The code is based mostly on these papers (with some trivial changes):
+
+1. https://journals.sagepub.com/doi/abs/10.1177/0278364918760698
+2. https://arxiv.org/abs/2104.14106
+
 ## Install
 
 Project depends on: https://github.com/Aceinna/gnss-ins-sim for generating simulated IMU data. Install:
