@@ -5,8 +5,11 @@ from numpy import dot, zeros, eye
 
 class CollaborativeKalmanFilter(object):
 
-    """ dim_a - extra agents besides the current one
-        agent_id - 0...dim_a-1 
+    """ Structure of filter highly based on:
+            https://github.com/rlabbe/filterpy
+
+        dim_a - extra agents besides the current one
+        agent_id - 0...dim_a-1
     """
 
     def __init__(self, dim_x, dim_z, dim_a, agent_id, dim_u=0):
