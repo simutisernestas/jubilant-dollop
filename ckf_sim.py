@@ -4,7 +4,8 @@ import os
 from ckf import CollaborativeKalmanFilter
 import transforms3d as tf
 import matplotlib.pyplot as plt
-
+from numba import njit
+import math
 
 DEBUG = False
 BEACONS_NUM = 2
@@ -18,6 +19,30 @@ REG_EKF = True
 if GEN_DATA:
     import subprocess
     subprocess.call("./gen_data.py", shell=True)
+
+
+@njit
+def euler2mat(ai, aj, ak):
+    i = 0
+    j = 1
+    k = 2
+
+    si, sj, sk = math.sin(ai), math.sin(aj), math.sin(ak)
+    ci, cj, ck = math.cos(ai), math.cos(aj), math.cos(ak)
+    cc, cs = ci*ck, ci*sk
+    sc, ss = si*ck, si*sk
+
+    M = np.eye(3)
+    M[i, i] = cj*ck
+    M[i, j] = sj*sc-cs
+    M[i, k] = sj*cc+ss
+    M[j, i] = cj*sk
+    M[j, j] = sj*ss+cc
+    M[j, k] = sj*cs-sc
+    M[k, i] = -sj
+    M[k, j] = cj*si
+    M[k, k] = cj*ci
+    return M
 
 
 class Beacon:
@@ -56,7 +81,6 @@ def getH(x_op: np.ndarray, beacons):
         if (the_norm == 0.0).any():
             raise Exception("Division by zero. ANY")
         if (diff == 0.0).all():
-            print(x_op[:3], b.get_pos())
             raise Exception("Division by zero")
         H[i][:3] = (diff / the_norm).T
     # check for inf in H
@@ -143,7 +167,7 @@ class Agent:
         gyro = self.__data["gyro-0"][step_index]
         domega = gyro.copy()
         R_att = tf.euler.euler2mat(
-            self.filter.x[6], self.filter.x[7], self.filter.x[8], axes='sxyz')
+            float(self.filter.x[6]), float(self.filter.x[7]), float(self.filter.x[8]))
         acc = (R_att @ acc) + self.g
         theta = self.filter.x[7][0]
         phi = self.filter.x[6][0]
@@ -309,9 +333,20 @@ if __name__ == "__main__":
     import time
     NRUN = 1
     times = []
+
+    PROFILE = False
+    if PROFILE:
+        import cProfile
+        from pstats import SortKey
+
+        with cProfile.Profile() as pr:
+            main(plot=False, regular=False)
+            pr.print_stats(SortKey.CUMULATIVE)
+        exit()
+
     for i in range(NRUN):
         start = time.time()
-        main(plot=True, regular=False)
+        main(plot=False, regular=False)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}")
