@@ -28,3 +28,10 @@ Run `./gen_data.py` to generate data used for experiments.
 ## Run
 
 Execute `./ckf_sim.py` to run simulation.
+
+## Docker
+
+```
+docker build -t myapp .
+docker run -it --rm -v "$(pwd)":/app -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix myapp
+```
