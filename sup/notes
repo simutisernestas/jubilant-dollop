@@ -27,3 +27,16 @@ Deliverable: Technical report in the form of a double column 6-page IEEE paper, 
 
 TODO:
  - ...
+
+
+DUMP
+
+PROFILE = False
+if PROFILE:
+    import cProfile
+    from pstats import SortKey
+
+    with cProfile.Profile() as pr:
+        main(plot=True, regular=False)
+        pr.print_stats(SortKey.CUMULATIVE)
+    exit()

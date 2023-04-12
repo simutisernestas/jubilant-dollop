@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 import numpy as np
-import os
 from ckf import CollaborativeKalmanFilter
 import transforms3d as tf
-import matplotlib.pyplot as plt
-from numba import njit
-import math
+from utils import *
+from scipy.linalg import block_diag
 
 DEBUG = False
 BEACONS_NUM = 2
@@ -19,30 +17,6 @@ REG_EKF = True
 if GEN_DATA:
     import subprocess
     subprocess.call("./gen_data.py", shell=True)
-
-
-@njit
-def euler2mat(ai, aj, ak):
-    i = 0
-    j = 1
-    k = 2
-
-    si, sj, sk = math.sin(ai), math.sin(aj), math.sin(ak)
-    ci, cj, ck = math.cos(ai), math.cos(aj), math.cos(ak)
-    cc, cs = ci*ck, ci*sk
-    sc, ss = si*ck, si*sk
-
-    M = np.eye(3)
-    M[i, i] = cj*ck
-    M[i, j] = sj*sc-cs
-    M[i, k] = sj*cc+ss
-    M[j, i] = cj*sk
-    M[j, j] = sj*ss+cc
-    M[j, k] = sj*cs-sc
-    M[k, i] = -sj
-    M[k, j] = cj*si
-    M[k, k] = cj*ci
-    return M
 
 
 class Beacon:
@@ -131,7 +105,6 @@ class Agent:
         I = np.eye(3)
         Idt = np.eye(3) * dt
         Idt2 = .5 * np.eye(3) * dt**2
-        from scipy.linalg import block_diag
         F = block_diag(I, I, I)
         F[0:3, 3:6] = Idt
         B = np.zeros((9, 6))
@@ -143,7 +116,7 @@ class Agent:
         self.filter.P = np.eye(9)
         self.filter.R = np.eye(self.DIM_Z)
         self.filter.rR *= 1e1  # relative
-        self.filter.Q = np.eye(9) * 1e-2  # TODO: debug
+        self.filter.Q = np.eye(9) * 1e-2
         self.g = np.array([0, 0, 9.794841972265039942e+00])
         self.trajectory = []
         self.attitude = []
@@ -160,9 +133,7 @@ class Agent:
     def num_data(self):
         return len(self.__data["ref_pos"])
 
-    def kalman_update(  # TODO: could be nice to have access implemented : )
-            self, beacons, agents, step_index,
-            range_meas=False, access_to_beacons=True):
+    def kalman_update(self, beacons, agents, step_index, range_meas=False):
         # save position
         self.trajectory.append(self.filter.x[:3].copy())
         self.attitude.append(self.filter.x[6:9].copy())
@@ -211,8 +182,9 @@ class Agent:
             self.filter.update(z, getH, hx, args=(
                 to_pass_beacons), hx_args=(to_pass_beacons))
         else:
-            # static
+            # static + TODO: add the bearing and altitude measurements
             gt_dists = [
+
                 self.__data[f"uwb-static{i}"][step_index][0] +
                 np.random.normal(scale=NOISE_STD) for i in range(BEACONS_NUM)]
             z = np.array(gt_dists).reshape(-1, 1)
@@ -251,37 +223,24 @@ class Agent:
                     agent.filter.cP[k] = np.eye(9)
 
 
-def take_in_data(agent_dir):
-    files = os.listdir(agent_dir)
-    data = {}
-    for file in files:
-        if not file.endswith(".csv"):
-            continue
-        path = os.path.join(agent_dir, file)
-        without_ext = os.path.splitext(file)[0]
-        data[without_ext] = np.loadtxt(path, delimiter=',', skiprows=1)
-    return data
-
-
-print("Loading data...\n")
-agent1_data = take_in_data("data/agent1")
-agent2_data = take_in_data("data/agent2")
-agent3_data = take_in_data("data/agent3")
-
-STARTING_POS = agent1_data["ref_pos"][0]
-agent1_data["ref_pos"] = agent1_data["ref_pos"] - STARTING_POS
-agent2_data["ref_pos"] = agent2_data["ref_pos"] - STARTING_POS
-agent3_data["ref_pos"] = agent3_data["ref_pos"] - STARTING_POS
-
-static_beacons = []
-for i in range(BEACONS_NUM):
-    x0 = agent1_data[f"uwb-static{i}"][0][1:] - STARTING_POS
-    static_beacons.append(Beacon(str(i), x0))
-
-
 def main(plot=True, regular=True):
     global REG_EKF
     REG_EKF = regular
+
+    print("Loading data...")
+    agent1_data = take_in_data("data/agent1")
+    agent2_data = take_in_data("data/agent2")
+    agent3_data = take_in_data("data/agent3")
+
+    STARTING_POS = agent1_data["ref_pos"][0]
+    agent1_data["ref_pos"] = agent1_data["ref_pos"] - STARTING_POS
+    agent2_data["ref_pos"] = agent2_data["ref_pos"] - STARTING_POS
+    agent3_data["ref_pos"] = agent3_data["ref_pos"] - STARTING_POS
+
+    static_beacons = []
+    for i in range(BEACONS_NUM):
+        x0 = agent1_data[f"uwb-static{i}"][0][1:] - STARTING_POS
+        static_beacons.append(Beacon(str(i), x0))
 
     Agent1 = Agent(agent1_data, 0)
     Agent2 = Agent(agent2_data, 1)
@@ -292,67 +251,17 @@ def main(plot=True, regular=True):
     print(f"Running {which}...")
     for i in range(Agent1.num_data()-1):
         range_meas = (i % 10 == 0)
-        for index, current_agent in enumerate(global_agents):
-            access_to_beacons = False if index == 0 else True
+        for _, current_agent in enumerate(global_agents):
             agents_without_itself = [
                 a for a in global_agents if a is not current_agent]
             current_agent.kalman_update(
-                static_beacons, agents_without_itself, i, range_meas, access_to_beacons)
+                static_beacons, agents_without_itself, i, range_meas)
 
     for agent in global_agents:
-        ref_pos = agent.get_ref_pos()
-        traj = np.array(agent.trajectory)
-        traj = traj.reshape(-1, 3)
-        # compute absolute error
-        error = np.linalg.norm(ref_pos[:-1] - traj, axis=1)
-        print(f"Error agent[{agent.id}]: {error.mean()}")
+        print_error_metrics(agent)
 
-    if not plot:
-        return
-
-    print("Plotting...")
-    # plot agents and static_beacons in map
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    for beacon in static_beacons:
-        position = beacon.get_pos()
-        # increase scatter size
-        ax.scatter(position[0], position[1], position[2], s=100)
-    for agent in global_agents:
-        ref_pos = agent.get_ref_pos()
-        ax.plot(ref_pos[:, 0], ref_pos[:, 1], ref_pos[:, 2])
-    for agent in global_agents:
-        traj = np.array(agent.trajectory)
-        traj = traj.reshape(-1, 3)
-        ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], '--')
-    legends = [f"beacon{i}" for i in range(BEACONS_NUM)]
-    legends.extend(f"agent{i}" for i in range(AGENTS_NUM))
-    legends.extend(f"EKF_agent{i}" for i in range(AGENTS_NUM))
-    ax.set_xlabel('X (m)')
-    ax.set_ylabel('Y (m)')
-    ax.set_zlabel('Z (m)')
-    ax.legend(legends)
-    # plt.show()
-
-    # TODO:
-    # https://github.com/Aceinna/gnss-ins-sim/blob/master/gnss_ins_sim/attitude/attitude.py#L22
-
-    # TODO: test
-    # plot attitude
-    fig2 = plt.figure()
-    ax2 = fig2.add_subplot(111)
-    for agent in global_agents:
-        agent = global_agents[1]
-        ref_att = agent.get_ref_att()
-        att = np.array(agent.attitude)
-        att = att.reshape(-1, 3)
-        error = np.deg2rad(ref_att[:-1]) - att
-        ax2.plot(error)
-        legends = [f"roll", f"pitch", f"yaw"]
-        ax2.legend(legends)
-        break
-
-    plt.show()
+    if plot:
+        plot_trajectories(static_beacons, global_agents)
 
 
 if __name__ == "__main__":
@@ -360,20 +269,9 @@ if __name__ == "__main__":
     import time
     NRUN = 1
     times = []
-
-    PROFILE = False
-    if PROFILE:
-        import cProfile
-        from pstats import SortKey
-
-        with cProfile.Profile() as pr:
-            main(plot=False, regular=False)
-            pr.print_stats(SortKey.CUMULATIVE)
-        exit()
-
     for i in range(NRUN):
         start = time.time()
-        main(plot=True, regular=False)
+        main(plot=False, regular=False)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}")
