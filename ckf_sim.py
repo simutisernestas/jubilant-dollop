@@ -136,7 +136,7 @@ class Agent:
     def kalman_update(self, beacons, agents, step_index, range_meas=False):
         # save position
         self.trajectory.append(self.filter.x[:3].copy())
-        self.attitude.append(self.filter.x[6:9].copy())
+        self.attitude.append(self.filter.x[6:9][::-1].copy())
 
         # predict
         acc = self.__data["accel-0"][step_index]
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     times = []
     for i in range(NRUN):
         start = time.time()
-        main(plot=False, regular=False)
+        main(plot=True, regular=False)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}")

@@ -56,20 +56,16 @@ def plot_trajectories(static_beacons, global_agents):
     ax.set_zlabel('Z (m)')
     ax.legend(legends)
 
-    # TODO: test
-    # plot attitude
-    fig2 = plt.figure()
-    ax2 = fig2.add_subplot(111)
-    for agent in global_agents:
-        agent = global_agents[1]
+    # create subplot for number of agents
+    fig2, ax2 = plt.subplots(AGENTS_NUM, 1)
+    for index,agent in enumerate(global_agents):
         ref_att = agent.get_ref_att()
         att = np.array(agent.attitude)
         att = att.reshape(-1, 3)
         error = np.deg2rad(ref_att[:-1]) - att
-        ax2.plot(error)
-        legends = [f"roll", f"pitch", f"yaw"]
-        ax2.legend(legends)
-        break
+        ax2[index].plot(error)
+        legends = [f"yaw", f"pitch", f"roll"]
+        ax2[index].legend(legends)
 
     plt.show()
 
