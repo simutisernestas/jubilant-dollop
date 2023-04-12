@@ -5,7 +5,6 @@ import transforms3d as tf
 from utils import *
 from scipy.linalg import block_diag
 
-DEBUG = False
 BEACONS_NUM = 2
 AGENTS_NUM = 3
 GEN_DATA = False
@@ -66,6 +65,14 @@ def getH(x_op: np.ndarray, beacons):
     return H
 
 
+def getHaug(x_op: np.ndarray, beacons, altitude, bearing):
+    H = getH(x_op, beacons)
+    H = np.vstack((H, np.zeros((2, len(x_op)))))
+    H[-2, 2] = 1
+    H[-1, -1] = 1
+    return H
+
+# TODO: test
 def getHraw(x_op: np.ndarray, b_op: np.ndarray):
     H = np.zeros((1, len(x_op)))
     diff = x_op[:3] - b_op[:3]
@@ -83,6 +90,12 @@ def hx(x, beacons):
     h = np.zeros((len(beacons), 1))
     for i, b in enumerate(beacons):
         h[i] = np.linalg.norm(x[:3] - b.get_pos())
+    return h
+
+# TODO: test
+def hxaug(x, beacons):
+    h = hx(x)
+    h = np.vstack((h, np.array([[x[-2]], [x[-1]]])))
     return h
 
 
@@ -107,6 +120,8 @@ class Agent:
         Idt2 = .5 * np.eye(3) * dt**2
         F = block_diag(I, I, I)
         F[0:3, 3:6] = Idt
+        print(F)
+        exit()
         B = np.zeros((9, 6))
         B[0:3, 0:3] = Idt2
         B[3:6, 0:3] = Idt
@@ -141,24 +156,19 @@ class Agent:
         # predict
         acc = self.__data["accel-0"][step_index]
         gyro = self.__data["gyro-0"][step_index]
-        domega = gyro.copy()
         R_att = tf.euler.euler2mat(
             float(self.filter.x[6]), float(self.filter.x[7]), float(self.filter.x[8]))
-        # TODO: confirm
         acc = (R_att @ acc) + self.g
         theta = self.filter.x[7][0]
         phi = self.filter.x[6][0]
         Rw = np.array([[np.cos(theta), 0, -np.cos(phi)*np.sin(theta)],
                        [0, 1, np.sin(phi)],
                        [np.sin(theta), 0, np.cos(phi)*np.cos(theta)]])
-        domega = domega * np.pi / 180
-        # TODO: confirm
-        u = np.concatenate((acc, np.linalg.inv(Rw) @ domega)).reshape(6, 1)
+        u = np.concatenate(
+            (acc, np.linalg.inv(Rw) @ np.deg2rad(gyro))).reshape(6, 1)
         if DISABLE_IMU:
             u *= 0
         self.filter.predict(u=u)
-        if DEBUG:
-            print(f"filter predict: {self.filter.x}")
 
         if not range_meas:
             return
@@ -174,8 +184,6 @@ class Agent:
                 gt_dists.append(
                     self.__data[f"uwb-agent{j+1}"][step_index] +
                     np.random.normal(scale=NOISE_STD))
-            if DEBUG:
-                print(f"True dists: {gt_dists}")
             z = np.array(gt_dists).reshape(-1, 1)
             to_pass_beacons = beacons.copy()
             to_pass_beacons.extend(agents)
@@ -184,11 +192,11 @@ class Agent:
         else:
             # static + TODO: add the bearing and altitude measurements
             gt_dists = [
-
                 self.__data[f"uwb-static{i}"][step_index][0] +
                 np.random.normal(scale=NOISE_STD) for i in range(BEACONS_NUM)]
             z = np.array(gt_dists).reshape(-1, 1)
             to_pass_beacons = beacons.copy()
+            # TODO: augment with bearing and altitude measurements
             self.filter.update(z, getH, hx, args=(
                 to_pass_beacons), hx_args=(to_pass_beacons))
             # dynamic
@@ -271,7 +279,7 @@ if __name__ == "__main__":
     times = []
     for i in range(NRUN):
         start = time.time()
-        main(plot=True, regular=False)
+        main(plot=True, regular=True)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}")
