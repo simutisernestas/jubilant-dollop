@@ -146,9 +146,13 @@ class Agent:
         self.filter.Q = np.eye(9) * 1e-2  # TODO: debug
         self.g = np.array([0, 0, 9.794841972265039942e+00])
         self.trajectory = []
+        self.attitude = []
 
     def get_ref_pos(self):
         return self.__data["ref_pos"]
+
+    def get_ref_att(self):
+        return self.__data["ref_att_euler"]
 
     def get_pos(self):
         return self.filter.x[:3].copy()
@@ -156,11 +160,12 @@ class Agent:
     def num_data(self):
         return len(self.__data["ref_pos"])
 
-    def kalman_update(  # TODO: could be nice to have acccess implemented : )
+    def kalman_update(  # TODO: could be nice to have access implemented : )
             self, beacons, agents, step_index,
             range_meas=False, access_to_beacons=True):
         # save position
         self.trajectory.append(self.filter.x[:3].copy())
+        self.attitude.append(self.filter.x[6:9].copy())
 
         # predict
         acc = self.__data["accel-0"][step_index]
@@ -168,6 +173,7 @@ class Agent:
         domega = gyro.copy()
         R_att = tf.euler.euler2mat(
             float(self.filter.x[6]), float(self.filter.x[7]), float(self.filter.x[8]))
+        # TODO: confirm
         acc = (R_att @ acc) + self.g
         theta = self.filter.x[7][0]
         phi = self.filter.x[6][0]
@@ -175,7 +181,8 @@ class Agent:
                        [0, 1, np.sin(phi)],
                        [np.sin(theta), 0, np.cos(phi)*np.cos(theta)]])
         domega = domega * np.pi / 180
-        u = np.concatenate((acc, Rw @ domega)).reshape(6, 1)
+        # TODO: confirm
+        u = np.concatenate((acc, np.linalg.inv(Rw) @ domega)).reshape(6, 1)
         if DISABLE_IMU:
             u *= 0
         self.filter.predict(u=u)
@@ -324,7 +331,27 @@ def main(plot=True, regular=True):
     ax.set_xlabel('X (m)')
     ax.set_ylabel('Y (m)')
     ax.set_zlabel('Z (m)')
-    plt.legend(legends)
+    ax.legend(legends)
+    # plt.show()
+
+    # TODO:
+    # https://github.com/Aceinna/gnss-ins-sim/blob/master/gnss_ins_sim/attitude/attitude.py#L22
+
+    # TODO: test
+    # plot attitude
+    fig2 = plt.figure()
+    ax2 = fig2.add_subplot(111)
+    for agent in global_agents:
+        agent = global_agents[1]
+        ref_att = agent.get_ref_att()
+        att = np.array(agent.attitude)
+        att = att.reshape(-1, 3)
+        error = np.deg2rad(ref_att[:-1]) - att
+        ax2.plot(error)
+        legends = [f"roll", f"pitch", f"yaw"]
+        ax2.legend(legends)
+        break
+
     plt.show()
 
 
@@ -346,7 +373,7 @@ if __name__ == "__main__":
 
     for i in range(NRUN):
         start = time.time()
-        main(plot=False, regular=False)
+        main(plot=True, regular=False)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}")
