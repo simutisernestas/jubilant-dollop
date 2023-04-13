@@ -32,21 +32,6 @@ class Beacon:
 
 
 def getH(x_op: np.ndarray, beacons):
-    """
-    pr - robot position
-    pbi = beacon_i position
-    J = [
-        d/dx h(x) = norm(pr - pb1),
-        d/dx h(x) = norm(pr - pb2),
-        ...
-        d/dx h(x) = norm(pr - pbn),
-    ]
-    first row of J (distance function h(x) to the beacon 1):
-    -(bx - x)/((bx - x)^2 + (by - y)^2 + (bz - z)^2)^(1/2)
-    -(by - y)/((bx - x)^2 + (by - y)^2 + (bz - z)^2)^(1/2)
-    -(bz - z)/((bx - x)^2 + (by - y)^2 + (bz - z)^2)^(1/2)
-    or switch bx,x places and remove minus in front
-    """
     H = np.zeros((len(beacons), len(x_op)))
     for i, b in enumerate(beacons):
         diff = x_op[:3] - b.get_pos()
@@ -65,14 +50,14 @@ def getH(x_op: np.ndarray, beacons):
     return H
 
 
-def getHaug(x_op: np.ndarray, beacons, altitude, bearing):
+def getHaug(x_op: np.ndarray, beacons):
     H = getH(x_op, beacons)
     H = np.vstack((H, np.zeros((2, len(x_op)))))
     H[-2, 2] = 1
     H[-1, -1] = 1
     return H
 
-# TODO: test
+
 def getHraw(x_op: np.ndarray, b_op: np.ndarray):
     H = np.zeros((1, len(x_op)))
     diff = x_op[:3] - b_op[:3]
@@ -92,10 +77,11 @@ def hx(x, beacons):
         h[i] = np.linalg.norm(x[:3] - b.get_pos())
     return h
 
-# TODO: test
-def hxaug(x, beacons):
-    h = hx(x)
-    h = np.vstack((h, np.array([[x[-2]], [x[-1]]])))
+
+def hxaug(x, beacons, altitude, bearing):
+    h = hx(x, beacons)
+    addition = np.array([altitude, bearing]).reshape(2, 1)
+    h = np.vstack((h, addition))
     return h
 
 
@@ -105,8 +91,8 @@ class Agent:
 
     def __init__(self, data, aid) -> None:
         global REG_EKF
-        self.DIM_Z = (BEACONS_NUM + (AGENTS_NUM - 1)
-                      ) if REG_EKF else BEACONS_NUM
+        self.DIM_Z = (BEACONS_NUM + (AGENTS_NUM - 1)) \
+            if REG_EKF else (BEACONS_NUM + 2)
         self.__data = data
         self.id = aid
         self.filter = CollaborativeKalmanFilter(
@@ -120,8 +106,6 @@ class Agent:
         Idt2 = .5 * np.eye(3) * dt**2
         F = block_diag(I, I, I)
         F[0:3, 3:6] = Idt
-        print(F)
-        exit()
         B = np.zeros((9, 6))
         B[0:3, 0:3] = Idt2
         B[3:6, 0:3] = Idt
@@ -129,7 +113,7 @@ class Agent:
         self.filter.F = F
         self.filter.B = B
         self.filter.P = np.eye(9)
-        self.filter.R = np.eye(self.DIM_Z)
+        self.filter.R = np.diag([1.0] * BEACONS_NUM + [10.0] + [10000.0])
         self.filter.rR *= 1e1  # relative
         self.filter.Q = np.eye(9) * 1e-2
         self.g = np.array([0, 0, 9.794841972265039942e+00])
@@ -195,10 +179,17 @@ class Agent:
                 self.__data[f"uwb-static{i}"][step_index][0] +
                 np.random.normal(scale=NOISE_STD) for i in range(BEACONS_NUM)]
             z = np.array(gt_dists).reshape(-1, 1)
+            # add altitude and bearing measurements
+            altitude = self.__data["ref_pos"][step_index][-1]
+            bearing = np.deg2rad(
+                self.__data["ref_att_euler"][step_index][0])
+            addition = np.array([altitude, bearing]).reshape(
+                2, 1) + np.random.normal(scale=NOISE_STD, size=(2, 1))
+            z = np.concatenate((z, addition)).reshape(-1, 1)
             to_pass_beacons = beacons.copy()
             # TODO: augment with bearing and altitude measurements
-            self.filter.update(z, getH, hx, args=(
-                to_pass_beacons), hx_args=(to_pass_beacons))
+            self.filter.update(z, getHaug, hxaug, args=(
+                to_pass_beacons), hx_args=(to_pass_beacons, self.filter.x[2], self.filter.x[-1]))
             # dynamic
             for j in range(AGENTS_NUM):
                 # check if self.__data has uwb-static key
@@ -270,6 +261,8 @@ def main(plot=True, regular=True):
 
     if plot:
         plot_trajectories(static_beacons, global_agents)
+    else:
+        make_plots(static_beacons, global_agents)
 
 
 if __name__ == "__main__":
@@ -279,7 +272,7 @@ if __name__ == "__main__":
     times = []
     for i in range(NRUN):
         start = time.time()
-        main(plot=True, regular=True)
+        main(plot=True, regular=False)
         end = time.time()
         times.append(end-start)
     print(f"Average time: {np.mean(times)}")

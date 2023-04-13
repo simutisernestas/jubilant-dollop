@@ -78,7 +78,7 @@ class CollaborativeKalmanFilter(object):
             arguments to be passed into HJacobian after the required state
             variable. for robot localization you might need to pass in
             information about the map and time of day, so you might have
-            `args=(map_data, time)`, where the signature of HCacobian will
+            `args=(map_data, time)`, where the signature of HJacobian will
             be `def HJacobian(x, map, t)`
 
         hx_args : tuple, optional, default (,)

@@ -40,3 +40,50 @@ if PROFILE:
         main(plot=True, regular=False)
         pr.print_stats(SortKey.CUMULATIVE)
     exit()
+
+"""
+pr - robot position
+pbi = beacon_i position
+J = [
+    d/dx h(x) = norm(pr - pb1),
+    d/dx h(x) = norm(pr - pb2),
+    ...
+    d/dx h(x) = norm(pr - pbn),
+]
+first row of J (distance function h(x) to the beacon 1):
+-(bx - x)/((bx - x)^2 + (by - y)^2 + (bz - z)^2)^(1/2)
+-(by - y)/((bx - x)^2 + (by - y)^2 + (bz - z)^2)^(1/2)
+-(bz - z)/((bx - x)^2 + (by - y)^2 + (bz - z)^2)^(1/2)
+or switch bx,x places and remove minus in front
+"""
+
+
+MAGNETOMETER BEARING
+
+import numpy as np
+
+def calibrate_magnetometer(raw_data, bias, scale):
+    calibrated_data = (raw_data - bias) * scale
+    return calibrated_data
+
+def calculate_bearing(magnetometer_data):
+    bearing_rad = np.arctan2(magnetometer_data[1], magnetometer_data[0])
+    bearing_deg = np.degrees(bearing_rad)
+    if bearing_deg < 0:
+        bearing_deg += 360
+    return bearing_deg
+
+# Raw magnetometer data (X, Y, Z)
+raw_magnetometer_data = np.array([100, 200, 300])
+
+# Calibration parameters (obtained during calibration process)
+bias = np.array([10, 20, 30])
+scale = np.array([1.1, 1.2, 1.3])
+
+# Calibrate magnetometer data
+calibrated_magnetometer_data = calibrate_magnetometer(raw_magnetometer_data, bias, scale)
+
+# Calculate absolute bearing angle
+bearing_angle = calculate_bearing(calibrated_magnetometer_data)
+
+print(f"Absolute bearing angle: {bearing_angle} degrees")

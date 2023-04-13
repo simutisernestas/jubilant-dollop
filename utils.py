@@ -3,6 +3,7 @@ import numpy as np
 from numba import njit
 import math
 import os
+import time
 
 
 @njit
@@ -29,13 +30,13 @@ def euler2mat(ai, aj, ak):
     return M
 
 
-def plot_trajectories(static_beacons, global_agents):
+def make_plots(static_beacons, global_agents, save=True):
     BEACONS_NUM = len(static_beacons)
     AGENTS_NUM = len(global_agents)
     """Plot the trajectories of the agents plus static beacons."""
     print("Plotting...")
     # plot agents and static_beacons in map
-    fig = plt.figure()
+    fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')
     for beacon in static_beacons:
         position = beacon.get_pos()
@@ -57,8 +58,8 @@ def plot_trajectories(static_beacons, global_agents):
     ax.legend(legends)
 
     # create subplot for number of agents
-    fig2, ax2 = plt.subplots(AGENTS_NUM, 1)
-    for index,agent in enumerate(global_agents):
+    fig2, ax2 = plt.subplots(AGENTS_NUM, 1, figsize=(10, 10))
+    for index, agent in enumerate(global_agents):
         ref_att = agent.get_ref_att()
         att = np.array(agent.attitude)
         att = att.reshape(-1, 3)
@@ -67,6 +68,15 @@ def plot_trajectories(static_beacons, global_agents):
         legends = [f"yaw", f"pitch", f"roll"]
         ax2[index].legend(legends)
 
+    if save:
+        fig.savefig(
+            f"report/figures/trajectory_{int(time.time())}.png", dpi=300)
+        fig2.savefig(
+            f"report/figures/attitude_{int(time.time())}.png", dpi=300)
+
+
+def plot_trajectories(static_beacons, global_agents):
+    make_plots(static_beacons, global_agents, save=False)
     plt.show()
 
 
