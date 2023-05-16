@@ -1,33 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from numba import njit
-import math
-import os
 import time
-
-
-@njit
-def euler2mat(ai, aj, ak):
-    i = 0
-    j = 1
-    k = 2
-
-    si, sj, sk = math.sin(ai), math.sin(aj), math.sin(ak)
-    ci, cj, ck = math.cos(ai), math.cos(aj), math.cos(ak)
-    cc, cs = ci*ck, ci*sk
-    sc, ss = si*ck, si*sk
-
-    M = np.eye(3)
-    M[i, i] = cj*ck
-    M[i, j] = sj*sc-cs
-    M[i, k] = sj*cc+ss
-    M[j, i] = cj*sk
-    M[j, j] = sj*ss+cc
-    M[j, k] = sj*cs-sc
-    M[k, i] = -sj
-    M[k, j] = cj*si
-    M[k, k] = cj*ci
-    return M
 
 
 def make_plots(static_beacons, global_agents, save=True):

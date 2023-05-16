@@ -262,7 +262,7 @@ def main(plot=True, regular=True):
     if plot:
         plot_trajectories(static_beacons, global_agents)
     else:
-        make_plots(static_beacons, global_agents)
+        make_plots(static_beacons, global_agents, save=True)
 
 
 if __name__ == "__main__":
