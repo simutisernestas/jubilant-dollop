@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import os
 
 
 def make_plots(static_beacons, global_agents, save=True):

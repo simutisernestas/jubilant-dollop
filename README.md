@@ -27,7 +27,7 @@ Run `./gen_data.py` to generate data used for experiments.
 
 ## Run
 
-Execute `./ckf_sim.py` to run simulation.
+Execute `./ckf_sim.py` to run simulation. Main implementation is in `ckf.py` class.
 
 ## Docker
 
