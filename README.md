@@ -31,7 +31,12 @@ Execute `./ckf_sim.py` to run simulation. Main implementation is in `ckf.py` cla
 
 ## Docker
 
-```
+```bash
 docker build -t myapp .
-docker run -it --rm -v "$(pwd)":/app -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix myapp
+docker run -it --rm -v "$(pwd)":/app -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix --user=$(id -u) myapp
+```
+
+From container bash:
+```bash
+python3 ckf_sim.py  
 ```
