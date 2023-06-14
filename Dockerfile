@@ -20,5 +20,14 @@ WORKDIR /app
 # Copy project files to working directory
 COPY . /app
 
+# Install dependencies
+RUN apt-get update && \
+    apt-get install -y git && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/Aceinna/gnss-ins-sim /app/gnss-ins-sim
+
+RUN pip3 install /app/gnss-ins-sim
+
 # Set the entrypoint for the container
 ENTRYPOINT [ "bash" ]
